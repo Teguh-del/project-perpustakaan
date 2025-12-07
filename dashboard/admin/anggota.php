@@ -37,22 +37,23 @@
     <header class="flex justify-between items-center mb-6">
       <div>
         <h1 class="text-2xl font-bold text-gray-800">Data Anggota</h1>
-        <p class="text-gray-600">Kelola akses mahasiswa</p>
+        <p class="text-gray-600">Daftar semua member perpustakaan</p>
       </div>
-      <div class="flex gap-2">
-        <div class="relative">
-          <input type="text" placeholder="Cari Mahasiswa..." class="px-4 py-2 border rounded-lg pl-10">
+      <div class="relative">
+        <form method="GET" class="flex">
+          <input 
+            type="text" 
+            name="cari" 
+            value="<?= htmlspecialchars($_GET['cari'] ?? '') ?>" 
+            placeholder="Cari nama atau email..." 
+            class="px-4 py-2 border rounded-lg pl-10 w-64"
+          >
           <div class="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
               <path d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001c-.212.212-.45.392-.713.544-.263.152-.544.263-.835.333-.291.07-.595.094-.904.084-.31-.01-.615-.057-.904-.134-.29-.076-.565-.193-.835-.333-.27-.152-.45-.392-.713-.544a6.5 6.5 0 0 0-1.397-1.398l-.001.001zm-1.397-1.398a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z"/>
             </svg>
           </div>
-        </div>
-        <div class="flex">
-          <button class="px-3 py-2 bg-gray-200 text-gray-800 rounded-l text-sm">Semua</button>
-          <button class="px-3 py-2 bg-blue-100 text-blue-800 text-sm">Aktif</button>
-          <button class="px-3 py-2 bg-gray-100 text-gray-800 rounded-r text-sm">Diblokir</button>
-        </div>
+        </form>
       </div>
     </header>
 
@@ -60,18 +61,43 @@
       <table class="min-w-full divide-y divide-gray-200">
         <thead class="bg-gray-50">
           <tr>
-            <th class="px-6 py-3 text-left text-xs font-medium uppercase">Profil</th>
-            <th class="px-6 py-3 text-left text-xs font-medium uppercase">Prodi</th>
-            <th class="px-6 py-3 text-left text-xs font-medium uppercase">Pinjaman Aktif</th>
-            <th class="px-6 py-3 text-left text-xs font-medium uppercase">Status</th>
-            <th class="px-6 py-3 text-left text-xs font-medium uppercase">Aksi</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Profil</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pinjaman Aktif</th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-200">
           <?php
           require '../../config/db.php';
-          $result = $koneksi->query("SELECT * FROM users WHERE role = 'member'");
-          while ($user = $result->fetch_assoc()):
+
+          // Ambil parameter pencarian
+          $cari = $_GET['cari'] ?? '';
+          $sql = "
+            SELECT 
+              u.id, u.nama, u.email,
+              COUNT(p.id) AS pinjaman_aktif
+            FROM users u
+            LEFT JOIN peminjaman p ON u.id = p.user_id AND p.status = 'dipinjam'
+            WHERE u.role = 'member'
+          ";
+
+          // Tambahkan kondisi pencarian jika ada
+          if (!empty($cari)) {
+            $sql .= " AND (u.nama LIKE ? OR u.email LIKE ?)";
+          }
+
+          $sql .= " GROUP BY u.id, u.nama, u.email ORDER BY u.nama";
+
+          $stmt = $koneksi->prepare($sql);
+          if (!empty($cari)) {
+            $like = "%$cari%";
+            $stmt->bind_param("ss", $like, $like);
+          }
+          $stmt->execute();
+          $result = $stmt->get_result();
+
+          if ($result->num_rows > 0):
+            while ($user = $result->fetch_assoc()):
           ?>
             <tr>
               <td class="px-6 py-4">
@@ -88,18 +114,28 @@
                   </div>
                 </div>
               </td>
-              <td class="px-6 py-4">Informatika</td>
               <td class="px-6 py-4">
-                <span class="inline-block px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-medium">2 Buku</span>
+                <?php if ($user['pinjaman_aktif'] > 0): ?>
+                  <span class="inline-block px-2 py-1 bg-red-100 text-red-800 rounded text-xs font-medium">
+                    <?= $user['pinjaman_aktif'] ?> Buku
+                  </span>
+                <?php else: ?>
+                  <span class="text-gray-500 text-sm">Tidak ada</span>
+                <?php endif; ?>
               </td>
               <td class="px-6 py-4">
-                <span class="inline-block px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-medium">Aktif</span>
-              </td>
-              <td class="px-6 py-4">
-                <a href="#" class="text-red-900 text-sm">Detail</a>
+                <span class="inline-block px-2 py-1 bg-green-100 text-green-800 rounded text-xs font-medium">
+                  Aktif
+                </span>
               </td>
             </tr>
-          <?php endwhile; ?>
+          <?php endwhile; else: ?>
+            <tr>
+              <td colspan="4" class="px-6 py-4 text-center text-gray-500">
+                Tidak ada anggota ditemukan.
+              </td>
+            </tr>
+          <?php endif; ?>
         </tbody>
       </table>
     </div>
